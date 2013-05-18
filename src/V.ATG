@@ -1,0 +1,501 @@
+using System.Collections;
+using System.Collections.Generic;
+
+using CSR.AST;
+
+COMPILER V
+
+/*----------------------------- token sets -------------------------------*/
+
+const int maxTerminals = 160;  // set size
+
+static BitArray NewSet(params int[] values) {
+  BitArray a = new BitArray(maxTerminals);
+  foreach (int x in values) a[x] = true;
+  return a;
+}
+
+static BitArray
+  unaryOp      = NewSet(_minus, _not, _true, _false),
+  typeKW       = NewSet(_bool, _string, _int,_double),
+  unaryHead    = NewSet(_plus, _minus, _not, _times, _and),
+  castFollower = NewSet(_not, _lpar, _ident,
+                 /* literals */
+                 _intCon, _realCon, _charCon, _stringCon
+                 ),
+
+  keyword      = NewSet(_program, _function, _begin, _end, _for, _to, _downto, _do, _while, _var, _if, _else, _and, _or, _xor, _bool, _int, _double, _string, _void, _null, _false, _true, _return),
+  assgnOps     = NewSet(_assgn);
+
+/*---------------------------- auxiliary methods ------------------------*/
+
+void Error (string s) {
+  if (errDist >= minErrDist) errors.SemErr(la.line, la.col, s);
+  errDist = 0;
+}
+
+// Return the n-th token after the current lookahead token
+Token Peek (int n) {
+  scanner.ResetPeek();
+  Token x = la;
+  while (n > 0) { x = scanner.Peek(); n--; }
+  return x;
+}
+
+/*------------------------------------------------------------------------*
+ *----- SCANNER DESCRIPTION ----------------------------------------------*
+ *------------------------------------------------------------------------*/
+
+CHARACTERS
+
+  tab                = '\u0009'. /*  9 = tabulator */
+  eol                = '\u000a'. /* 10 = line feed */
+  cr                 = '\u000d'. /* 13 = carriage return */
+  newLine            = cr + eol. /* Line separator character (U+2028) + Paragraph separator character (U+2029) */
+
+  startLetter        = 'A' .. 'Z' + 'a' .. 'z' + '_' + '\u00aa' + '\u00b5' + '\u00ba' + '\u00c0' .. '\u00d6' + '\u00d8' .. '\u00f6' + '\u00f8' .. '\u00ff'.
+  partLetter         = '0' .. '9' + 'A' .. 'Z' + 'a' .. 'z' + '_' + '\u00a0' + '\u00aa' + '\u00b5' + '\u00ba' + '\u00c0' .. '\u00d6' + '\u00d8' .. '\u00f6' + '\u00f8' .. '\u00ff'.
+
+  digit              = "0123456789".  
+  hexDigit           = digit + "ABCDEFabcdef".
+  notDigit           = ANY - digit.
+
+  char               = ANY - "'" - '\\' - newLine.
+  verbatimStringChar = ANY - '"'.
+  regularStringChar  = ANY - '"' - '\\' - newLine.
+  notNewLine         = ANY - newLine .
+  ws                 = " " + tab + '\u000b' + '\u000c'. /* Any character with Unicode class Zs */
+
+TOKENS
+
+  ident =
+    ( startLetter
+    | '\\'
+      ( 'u' hexDigit hexDigit hexDigit hexDigit
+      | 'U' hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit
+      )
+    )
+    { partLetter
+    | '\\'
+      ( 'u' hexDigit hexDigit hexDigit hexDigit
+      | 'U' hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit
+      )
+    }.
+  /*--------------------------------------------------------------------------------*/
+  intCon =
+    ( digit {digit} | digit {digit} CONTEXT ("." notDigit)
+    | ("0x" | "0X") hexDigit {hexDigit}
+    ).
+  /*--------------------------------------------------------------------------------*/
+  realCon =
+    "." digit {digit} 
+    [("e" | "E") ["+" | "-"] digit {digit}]
+  | digit {digit} 
+    ( "." digit {digit} 
+      [("e" | "E" ) ["+" | "-"] digit {digit} ] 
+    | ("e" | "E") ["+" | "-"] digit {digit}
+      ["D" | "d"]
+    | "D" | "d"  
+    ).
+  /*--------------------------------------------------------------------------------*/
+  charCon =
+    "'" ( char
+        | "\\\'" | "\\\"" | "\\\\" | "\\0" | "\\a" | "\\b" | "\\f" | "\\n" | "\\r" | "\\t" | "\\v"
+        | "\\x" hexDigit [hexDigit] [hexDigit] [hexDigit]
+        | "\\u" hexDigit hexDigit hexDigit hexDigit
+        | "\\U" hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit hexDigit
+        ) 
+    "'".
+  /*--------------------------------------------------------------------------------*/
+  stringCon =
+    "\""  { regularStringChar
+          | "\\\'" | "\\\"" | "\\\\" | "\\0" | "\\a" | "\\b" | "\\f" | "\\n" | "\\r" | "\\t" | "\\v"
+          } 
+    "\""
+  | "@\"" {verbatimStringChar | "\"\""} "\"".
+
+  /*----- keyword names needed in LL(1) resolvers -----*/
+
+  program    = "program".
+  function	 = "function".
+  begin      = "begin".
+  end 		 = "end".
+  for		 = "for".
+  to		 = "to".
+  downto	 = "downto".
+  do		 = "do".
+  while		 = "while".
+  var		 = "var".
+  if         = "if".
+  else       = "else".
+
+  and		 = "and".
+  or		 = "or".
+  xor		 = "xor".
+  
+  bool       = "bool".
+  int        = "int".
+  double     = "double".
+  string     = "string".
+  void       = "void".
+  null       = "null".
+
+  false      = "false".
+  true       = "true".
+  return     = "return".
+  
+
+  /*----- operators and special characters needed in LL(1) resolvers --------------*/
+  assgn      = "=".
+  colon      = ":".
+  comma      = ",".
+  dot        = ".".
+  eq         = "==".
+  gt         = ">".
+  gteq       = ">=".
+  lbrace     = "{".
+  lbrack     = "[".
+  lpar       = "(".
+  lt         = "<".
+  minus      = "-".
+  not        = "!".
+  plus       = "+".
+  rbrace     = "}".
+  rbrack     = "]".
+  rpar       = ")".
+  scolon     = ";".
+  times      = "*".
+
+COMMENTS FROM "/*" TO "*/"
+COMMENTS FROM "//" TO eol
+
+IGNORE eol + cr + tab
+
+
+PRODUCTIONS
+
+/*---------------------------------------------------------------------
+			 					Declarations  
+---------------------------------------------------------------------*/
+
+V									
+= "program" ident					(. CSR.Compiler.Compiler.staticScope.name = t.val; .)
+  ";"	
+  {									(. FunctionDeclaration decl; .)
+	FunctionDeclaration<out decl, CSR.Compiler.Compiler.staticScope>	
+									(. CSR.Compiler.Compiler.staticScope.AddFunction(decl); .)
+	|								(. VariableDeclarationList decls; .)
+	VariableDeclarations<out decls> (. CSR.Compiler.Compiler.staticScope.AddVariables(decls); .)
+  }
+  
+									(. FunctionDeclaration main; .)
+  ProgramBody<out main>				(. CSR.Compiler.Compiler.staticScope.entryPoint = main; .)
+.
+
+ProgramBody<out FunctionDeclaration main>
+									(. Statement stmt; 
+									   main = new FunctionDeclaration("Main", CSR.Compiler.Compiler.staticScope);
+									.)
+=
+  BlockStatement<out stmt>			(. main.body = stmt as BlockStatement; .)
+.
+
+FunctionDeclaration<out FunctionDeclaration decl, Scope parentScope>
+									(. Statement stmt; 
+									   BaseType type;
+									   VariableDeclarationList decls;
+									.)									
+=
+  "function"
+  ident								(. decl = new FunctionDeclaration(t, parentScope); .)
+  "("
+  [
+	Type<out type>
+	ident							(. decl.AddArgument(t, type); .)
+	{ ","
+  	  Type<out type>
+	  ident							(. decl.AddArgument(t, type); .)
+	}
+  ]
+  ")" 
+  [ ":"
+    Type<out type>			(. decl.returnType = type; .)  
+  ]
+  { VariableDeclarations<out decls> (. decl.localScope.AddVariables(decls); .)
+  }
+  BlockStatement<out stmt>			(. decl.body = stmt as BlockStatement; .)
+.
+
+VariableDeclarations<out VariableDeclarationList decls>
+									(. decls = new VariableDeclarationList(); 
+									   BaseType type;
+									.)
+=
+  "var"
+  Type<out type>
+  ident								(. decls.Add(new VariableDeclaration(t, type)); .)
+  { ","
+    ident							(. decls.Add(new VariableDeclaration(t, type)); .)
+  }
+  ";"
+  {
+    Type<out type>
+    ident							(. decls.Add(new VariableDeclaration(t, type)); .)
+    { ","
+      ident							(. decls.Add(new VariableDeclaration(t, type)); .)
+    }
+    ";" }
+.
+
+Type<out BaseType type>
+=
+  Primitive<out type>			    (. Token keepT = type.t; .)
+  [ "["
+    intCon							(. type = new ArrayType(type, t.val); .)
+									(. type.t = keepT; .)
+	  { ","
+	    intCon						(. (type as ArrayType).AddDimension(t.val); .)
+	  }
+    "]"
+  ]
+.
+
+Primitive<out BaseType type>
+									(. type = null; .)
+=
+  "int"								(. type = PrimitiveType.INT; 
+									   type.t = t;
+									.)
+  | "double"						(. type = PrimitiveType.DOUBLE;
+									   type.t = t;
+									.)
+  | "string"						(. type = PrimitiveType.STRING;
+									   type.t = t;
+									.)
+  | "bool"							(. type = PrimitiveType.BOOL;
+									   type.t = t;
+									.)
+.
+
+Statement<out Statement stmt>
+									(. stmt = null; .)
+=
+  BlockStatement<out stmt> 
+  | CallOrAssgStatement<out stmt> 
+  | ReturnStatement<out stmt>
+  | IfStatement<out stmt>
+  | WhileStatement<out stmt>
+  | DoWhileStatement<out stmt>
+  | ForStatement<out stmt>
+.
+
+BlockStatement<out Statement stmt>
+									(. BlockStatement blockStmt = new BlockStatement(); 
+									   Statement containedStmt;
+									.)
+=
+  "begin"							(. blockStmt.t = t; .)
+  { Statement<out containedStmt>	(. blockStmt.AddStatement(containedStmt); .)
+  }
+  "end"								(. stmt = blockStmt; .)
+.
+
+CallOrAssgStatement<out Statement stmt>
+									(. Expression expr; 
+									   stmt = null;
+									.)
+=
+  Expression<out expr>
+  [ "="								(. Expression rightSide; .)
+    Expression<out rightSide>	    (. stmt = new AssignementStatement(expr, rightSide); .)
+  ]
+  ";"								(. if (stmt == null)
+										 stmt = new CallStatement(expr); 
+									   stmt.t = expr.t;
+									.)
+.
+
+ReturnStatement<out Statement stmt>
+=
+  "return"							(. stmt = new ReturnStatement(); 
+									   stmt.t = t;									
+									.)
+  [ Expression<out (stmt as ReturnStatement).expr>
+  ]
+  ";"
+.
+
+IfStatement<out Statement stmt>
+									(. stmt = new IfStatement(); .)
+=
+  "if"								(. stmt.t = t; .)
+  "(" Expression<out (stmt as IfStatement).condition>
+  ")"
+  Statement<out (stmt as IfStatement).ifBranch>
+  [ "else"
+    Statement<out (stmt as IfStatement).elseBranch>
+  ]
+.
+
+WhileStatement<out Statement stmt>
+									(. stmt = new WhileStatement(); .)
+=
+  "while"							(. stmt.t = t; .)
+  "(" Expression<out (stmt as WhileStatement).condition>
+  ")"
+  Statement<out (stmt as WhileStatement).body>
+.
+
+DoWhileStatement<out Statement stmt>
+									(. stmt = new DoWhileStatement(); .)
+=
+  "do"								(. stmt.t = t; .)
+  Statement<out (stmt as DoWhileStatement).body>
+  "while" "(" Expression<out (stmt as DoWhileStatement).condition>
+  ")"
+.
+
+ForStatement<out Statement stmt>
+									(. stmt = new ForStatement(); .)
+=
+  "for"								(. stmt.t = t; .)
+  Expression<out (stmt as ForStatement).variable>
+  "=" Expression<out (stmt as ForStatement).initial> 
+  ( "to"							(. (stmt as ForStatement).direction = ForDirection.Up; .)
+    | "downto"						(. (stmt as ForStatement).direction = ForDirection.Down; .)
+  )
+  Expression<out (stmt as ForStatement).final>
+  "do" Statement<out (stmt as ForStatement).body>
+.
+
+Expression<out Expression expr>
+									(. expr = null; .)
+=
+  UnaryExpr<out expr>				(. Expression leftOperand = expr; .)
+  EqExpr<out expr, leftOperand>  
+.
+
+ConstantExpression<out Expression expr>
+									(. expr = null; .)
+=
+  stringCon							(. expr = new ConstantExpression(CSR.AST.Primitive.String, t); .)
+  | intCon							(. expr = new ConstantExpression(CSR.AST.Primitive.Int, t); .)
+  | realCon							(. expr = new ConstantExpression(CSR.AST.Primitive.Double, t); .)
+  | true							(. expr = new ConstantExpression(CSR.AST.Primitive.Bool, t); .)
+  | false							(. expr = new ConstantExpression(CSR.AST.Primitive.Bool, t); .)
+.
+
+UnaryExpr<out Expression expr>
+									(. expr = null; .)
+=
+  ("-"								(. expr = new UnaryExpression(UnaryOperator.UMinus);
+									   expr.t = t; 
+									.)
+	UnaryExpr<out (expr as UnaryExpression).operand>
+  | "!"								(. expr = new UnaryExpression(UnaryOperator.Not); 
+									   expr.t = t;
+									.)
+    UnaryExpr<out (expr as UnaryExpression).operand>
+  | ConstantExpression<out expr>
+  | "{" "int" 					(. expr = new CastExpression(PrimitiveType.INT); 
+								   expr.t = t;
+								.)
+    "}"
+	UnaryExpr<out (expr as CastExpression).operand>
+  | ident							(. expr = new VariableReferenceExpression(t.val); 
+									   expr.t = t;
+									.)
+    {
+      "."
+      ident							(. (expr as VariableReferenceExpression).name += "." + t.val; .)
+    }
+    [ ( "("							(. expr = new CallExpression((expr as VariableReferenceExpression).name, expr.t); 
+		 							   Expression argument;	
+									.)
+       [ Expression<out argument>		(. (expr as CallExpression).AddArgument(argument); .)
+	     { "," Expression<out argument>	(. (expr as CallExpression).AddArgument(argument); .)
+	     }
+       ]
+       ")"
+       )
+       |
+       ( "["						(. expr = new IndexerExpression(expr as VariableReferenceExpression); 
+									   Expression indexer;	
+									.)
+		 Expression<out indexer>		(. (expr as IndexerExpression).AddIndexer(indexer); .) 
+		 { "," Expression<out indexer>  (. (expr as IndexerExpression).AddIndexer(indexer); .) 
+		 }
+		 "]"
+       )
+    ]
+  | "(" Expression<out expr> ")"
+  )  
+.
+
+EqExpr<out Expression expr, Expression leftOperand>
+									(. expr = null;
+									   Expression rightOperand;
+									.)
+=
+  LogExpr<out expr, leftOperand>	
+  {									(. expr = new BinaryExpression(expr); .)
+    ("=="							(. (expr as BinaryExpression).op = BinaryOperator.Eq; .)
+    | "!="							(. (expr as BinaryExpression).op = BinaryOperator.Neq; .)
+    | ">"							(. (expr as BinaryExpression).op = BinaryOperator.Gt; .)
+    | "<"							(. (expr as BinaryExpression).op = BinaryOperator.Lt; .)
+    | ">="							(. (expr as BinaryExpression).op = BinaryOperator.Geq; .)
+    | "<="							(. (expr as BinaryExpression).op = BinaryOperator.Leq; .)
+    ) 
+									(. expr.t = t; .)
+    UnaryExpr<out rightOperand>
+    LogExpr<out (expr as BinaryExpression).rightOperand, rightOperand>
+  }
+.	
+
+LogExpr<out Expression expr, Expression leftOperand>
+									(. expr = null; 
+									   Expression rightOperand;
+									.)
+= 
+  AddExpr<out expr, leftOperand>	
+  {									(. expr = new BinaryExpression(expr); .)
+    ("and"							(. (expr as BinaryExpression).op = BinaryOperator.And; .)
+    | "or"							(. (expr as BinaryExpression).op = BinaryOperator.Or; .)
+    | "xor"							(. (expr as BinaryExpression).op = BinaryOperator.Xor; .)
+    ) 
+									(. expr.t = t; .)
+    UnaryExpr<out rightOperand>
+    AddExpr<out (expr as BinaryExpression).rightOperand, rightOperand>
+  }
+.
+
+AddExpr<out Expression expr, Expression leftOperand>
+									(. expr = null; 
+									   Expression rightOperand;
+									.)
+= 
+  MulExpr<out expr, leftOperand>	
+  {									(. expr = new BinaryExpression(expr); .)
+    ("+"							(. (expr as BinaryExpression).op = BinaryOperator.Add; .)
+    | "-"							(. (expr as BinaryExpression).op = BinaryOperator.Sub; .)
+    ) 
+									(. expr.t = t; .)
+    UnaryExpr<out rightOperand>
+    MulExpr<out (expr as BinaryExpression).rightOperand, rightOperand>
+  }
+.
+
+MulExpr<out Expression expr, Expression leftOperand>
+									(. expr = leftOperand; .)
+= 
+  {									(. expr = new BinaryExpression(leftOperand); .)	
+    ("*"							(. (expr as BinaryExpression).op = BinaryOperator.Mul; .)
+    | "/"							(. (expr as BinaryExpression).op = BinaryOperator.Div; .)
+    | "%"							(. (expr as BinaryExpression).op = BinaryOperator.Rem; .)
+    ) 
+									(. expr.t = t; .)
+    UnaryExpr<out (expr as BinaryExpression).rightOperand>
+  }
+.
+
+END V.

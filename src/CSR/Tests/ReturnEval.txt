@@ -1,0 +1,12 @@
+program ReturnEvalTest;
+
+function Test() : int
+begin
+  return 3.5;
+  System.Console.WriteLine("!");
+end
+
+begin
+  System.Console.WriteLine(Test());
+  System.Console.ReadLine();
+end

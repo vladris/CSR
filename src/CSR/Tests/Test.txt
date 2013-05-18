@@ -1,0 +1,54 @@
+program Test;
+
+var 
+  int[4] stack;
+
+function PrintStack()
+var
+  int i;
+  
+begin
+  for i = 0 to 3 do
+  begin
+    System.Console.Write(stack[i]);
+    System.Console.Write(" ");
+  end
+  
+  System.Console.WriteLine();
+end
+
+function OK(int level): bool
+var
+  int i;
+  
+begin
+  for i = 0 to level - 1 do
+    if (stack[i] == stack[level])
+      return false;
+      
+  return true;
+end
+
+function Aranjamente(int level)
+var
+  int i;
+
+begin
+  for i = 0 to 3 do
+  begin
+    stack[level] = i + 1;
+    
+    if (OK(level))
+      if (level == 3)
+        PrintStack();
+      else
+		Aranjamente(level + 1);
+  end
+end
+
+begin
+  System.Console.WriteLine("Aranjamente de 4 luate cate 4:");
+  Aranjamente(0);
+  System.Console.WriteLine("Apasati ENTER");
+  System.Console.ReadLine();
+end

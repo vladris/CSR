@@ -1,0 +1,72 @@
+program ExprTest;
+
+var 
+  int i;
+  string s1, s2;
+  bool t, f;
+
+function test(): int[5]
+var
+  int[5] i;
+begin
+  i[0] = 12;
+  i[1] = 2;
+  return i;
+end
+
+var
+  int[5,5] test;
+
+begin
+ t = true;
+ f = false;
+
+ test[0,0] = 3;
+ 
+ System.Console.WriteLine(-test[0,0]);
+
+ s1 = "hello";
+ s2 = "hello";
+ 
+ System.Console.WriteLine(s1 == s2);
+
+ i = 10;
+ 
+ System.Console.WriteLine(i + 1);
+
+ // System.Console.WriteLine(2 + true);
+ // System.Console.WriteLine(false + true);
+  System.Console.WriteLine(false xor false);
+  
+  if ("GJ")
+  begin
+    System.Console.WriteLine("hmmm");
+  end
+  
+  if (i == 0)
+  begin
+    System.Console.WriteLine("if branch");
+    return;
+  end
+  
+  while (i != 10)
+  begin
+    System.Console.WriteLine(i);
+    return ;
+  end
+    
+  do
+    System.Console.WriteLine("Just ONCE");
+  while (0)
+  
+  while (i + 1)
+  begin
+    System.Console.WriteLine("ciudat");
+    i = i - 1;
+  end
+  
+  System.Console.WriteLine("a" + "b");
+ // System.Console.WriteLine("a" + 2);
+  System.Console.WriteLine("Ceva\r\n\"pe mai\t\"multe\"\r\nlinii\\\"");
+  System.Console.ReadLine();
+end

@@ -1,0 +1,11 @@
+program ParserError;
+
+var
+  int r, xr;
+
+begin
+  System.Console.WriteLine(true or false);
+  System.Console.WriteLine(!true and false);
+  System.Console.WriteLine(!2 + 10 * (3 + 5));
+  System.Console.ReadLine();
+end
